@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **Security → Verify Standards Compliance**: validate a PDF against the standards declared in its XMP metadata (PDF/A, PDF/UA-1, PDF/UA-2, WTPDF). Returns JSON.
+
 ## 0.2.0 - 2026-10-22
 
 ### Added
