@@ -45,12 +45,20 @@
 #
 # ─── RELEASE PROCESS ───────────────────────────────────────────────────────────
 #
-# Run the following command locally to start an interactive release:
+# Locally, cut the release by hand so the hand-written CHANGELOG.md survives
+# (`npm run release` runs release-it, whose auto-changelog hook would rewrite
+# it). Note that `npm ci` needs Node LTS — isolated-vm does not compile
+# against Node 26's V8 headers.
 #
-#   npm run release
+#   1. Rename CHANGELOG.md's "## Unreleased" heading to "## <version> - <date>".
+#   2. npm version <version> --no-git-tag-version
+#   3. git commit -am "Release <version>" && git tag <version>
+#   4. git push origin main && git push origin <version>
 #
-# This will lint, build, prompt for a version bump, update the changelog,
-# commit, tag, and push — which triggers this workflow to publish to npm.
+# The tag push triggers this workflow, which publishes to npm with provenance
+# and then creates the matching GitHub release. Release notes are taken from
+# the "## <version>" section of CHANGELOG.md, so step 1 is what makes them
+# read well; without a matching section, GitHub's generated notes are used.
 
 name: Publish
 
@@ -101,3 +109,68 @@ jobs:
         # for a short-lived publish token. Configure the Trusted Publisher on
         # npmjs.com → package settings → Trusted Publishers (repo + this workflow).
         run: npm run release
+
+  github-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    needs: publish
+
+    permissions:
+      # Only this job needs to write; the publish job stays read-only.
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history + tags, so the previous tag can be found for the
+          # "Full changelog" compare link.
+          fetch-depth: 0
+
+      - name: Build release notes
+        id: notes
+        # Pulls the "## <version>" section out of CHANGELOG.md (stopping at the
+        # next "## " heading). If there is no section for this tag, the release
+        # falls back to GitHub's auto-generated notes.
+        env:
+          VERSION: ${{ github.ref_name }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          awk -v ver="$VERSION" '
+            $0 ~ "^## " ver "( |$)" { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+
+          # Trim leading and trailing blank lines.
+          sed -i -e '/./,$!d' release-notes.md
+          printf '%s' "$(cat release-notes.md)" > release-notes.md
+
+          if [ -s release-notes.md ]; then
+            prev=$(git describe --tags --abbrev=0 "$VERSION^" 2>/dev/null || true)
+            if [ -n "$prev" ]; then
+              printf '\n\n**Full changelog:** %s/compare/%s...%s\n' \
+                "$REPO_URL" "$prev" "$VERSION" >> release-notes.md
+            else
+              printf '\n' >> release-notes.md
+            fi
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No CHANGELOG.md section for $VERSION; using generated notes."
+            echo "has_notes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+          HAS_NOTES: ${{ steps.notes.outputs.has_notes }}
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists; nothing to do."
+            exit 0
+          fi
+          if [ "$HAS_NOTES" = "true" ]; then
+            gh release create "$VERSION" --title "$VERSION" --notes-file release-notes.md --verify-tag
+          else
+            gh release create "$VERSION" --title "$VERSION" --generate-notes --verify-tag
+          fi
