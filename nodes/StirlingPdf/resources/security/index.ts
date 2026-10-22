@@ -11,7 +11,7 @@ const forSecurity = { resource: ['security'] };
 const forOp = (operation: string) => ({ resource: ['security'], operation: [operation] });
 
 // Operations that return JSON instead of a binary file.
-const jsonOps = ['getInfo', 'validateSignature'];
+const jsonOps = ['getInfo', 'validateSignature', 'verifyStandards'];
 
 export const securityDescription: INodeProperties[] = [
 	{
@@ -97,6 +97,14 @@ export const securityDescription: INodeProperties[] = [
 				action: 'Validate a PDF signature',
 				description: 'Validate the digital signatures in a PDF',
 				routing: jsonRouting('/api/v1/security/validate-signature', sendValidateSignatureAsMultipart),
+			},
+			{
+				name: 'Verify Standards Compliance',
+				value: 'verifyStandards',
+				action: 'Verify PDF standards compliance',
+				description:
+					'Validate a PDF against the standards declared in its XMP metadata (PDF/A, PDF/UA-1, PDF/UA-2, WTPDF)',
+				routing: jsonRouting('/api/v1/security/verify-pdf'),
 			},
 		],
 		default: 'addPassword',
