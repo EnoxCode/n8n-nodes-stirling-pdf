@@ -26,10 +26,10 @@ Status: **scaffolded (declarative style), lint + build + cloud-support green.** 
 ### ⚠️ Mandatory-options gotcha (verified against the live instance)
 Stirling's OpenAPI marks many fields with a `default`, but the **controllers do not apply those defaults** — a field left unsent arrives `null` and either fails validation (`fontSize: must be at least 1.0`) or crashes (`String.hashCode() ... null` for `alphabet`/`customColor`). Consequence: **any field the server needs must be an always-sent top-level param, never buried in an optional `collection`** (collection fields are only sent when the user expands them). This bit Add Watermark (needed `alphabet` + `customColor` + `fontSize`) and applies to Add Stamp. When adding ops, promote every server-required field to a direct param with a sensible default; keep only genuinely optional fields in "Additional Fields". A minimal-request probe (send only the node's defaults, expect 200) is the way to catch these — see the scratchpad test used during development.
 
-### Instance-gated endpoints (correct wiring, fail only on the plat4mation demo)
+### Instance-gated endpoints (correct wiring, fail only on the test instance)
 These are implemented correctly but return errors on the demo host due to its configuration, not the node — expect them to work on a fully-featured instance: `add-stamp`, `remove-cert-sign`, `validate-signature` return **403 "endpoint is disabled"**; `timestamp` 500s (instance can't reach the TSA); `ocr` 500s (no Tesseract language pack). **URL→PDF was dropped entirely** — it 500s with "No current ServletRequestAttributes" for every URL (a Stirling async-job bug); the no-file `sendFieldsAsMultipart` helper remains for when it is re-added.
 
-### Verified runtime facts (tested against the plat4mation demo instance)
+### Verified runtime facts (tested against the test instance)
 - Runs **inside n8n** (Gate 4 confirmed by the user): File→PDF converts docx→pdf; the output binary gets a fileName (input base name + response extension) so n8n shows a Download button and downstream nodes can reference it by the *Output Data Field Name* (default `data`).
 - `fileInput` is the multipart field for most ops; **Forms use `file`**. Analysis/info/forms-inspection endpoints return JSON (use `jsonRouting`, no `encoding`).
 - The demo host sits behind a WAF that **403s any User-Agent containing `curl`** (this also blocks `curl` downloads of the spec — use `-A "Mozilla/5.0"`). n8n/axios UA passes fine, so the node needs **no** custom User-Agent.
@@ -45,7 +45,7 @@ This file *is* the contract for the whole node — every Resource/Operation/para
 - **Every endpoint is `POST` with `multipart/form-data`.** Request schemas are `$ref`s into `components.schemas` — resolve the ref to see the fields.
 - **Primary file field is `fileInput`** (78 endpoints) or `file` (8, mostly analysis/extract). Secondary file fields exist for specific ops: `certFile`, `p12File`, `jksFile`, `privateKeyFile`, `watermarkImage`, `stampImage`, `imageFile`, `attachments`, `overlayFiles`.
 - **Responses are mostly binary:** `application/pdf` (50), `application/zip` (12, split/multi-file ops), `image/png`/`image/jpeg` (22, render ops), plus `application/json` (9, analysis/info ops) and a little `text/csv|markdown|plain`. Many are declared `*/*` — inspect per-endpoint.
-- The server is **instance-hosted** (`servers: [{ url: "/" }]`). The base URL is the user's own Stirling PDF instance (the plat4mation demo host is just one). The n8n credential must therefore capture **both base URL and API key**.
+- The server is **instance-hosted** (`servers: [{ url: "/" }]`). The base URL is the user's own Stirling PDF instance. The n8n credential must therefore capture **both base URL and API key**.
 
 Categories (the `tags`) map naturally onto n8n **Resources**:
 
@@ -63,7 +63,7 @@ Categories (the `tags`) map naturally onto n8n **Resources**:
 
 **Refreshing the spec:** the host 403s without a browser User-Agent. Re-download with:
 ```bash
-curl -sSL "https://pdftools.plat4mation.com/v1/api-docs/file-processing" \
+curl -sSL "https://<your-stirling-instance>/v1/api-docs/file-processing" \
   -H "User-Agent: Mozilla/5.0" -H "Accept: application/json" -o docs/stirling-pdf-api.json
 ```
 
